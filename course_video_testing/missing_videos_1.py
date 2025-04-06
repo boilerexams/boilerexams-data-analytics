@@ -8,14 +8,21 @@ import pandas as pd
 df = pl.read_parquet("missing_videos.parquet")
 
 # Ensure 'Course Name' column is available
-#if "Course Name" not in df.columns:
-#    raise ValueError("The column 'Course Name' is not present in the DataFrame.")
+if "Course Name" not in df.columns:
+    raise ValueError("The column 'Course Name' is not present in the DataFrame.")
 
 # Get unique course names
 course_names = ["All"] + sorted(df["Course Name"].unique().to_list())
 
-# Columns that can be sorted
-columns_to_sort = ["Average Percent Correct", "Total Submissions", "Correct Submissions"]
+# Define column styles to prevent resizing
+column_style = {
+    "minWidth": "150px",  # Minimum width
+    "maxWidth": "150px",  # Maximum width (prevents resizing)
+    "width": "150px",  # Fixed width
+    "overflow": "hidden",
+    "textOverflow": "ellipsis",
+    "whiteSpace": "nowrap",
+}
 
 # Initialize Dash app
 app = dash.Dash(__name__)
@@ -27,51 +34,39 @@ app.layout = html.Div([
         options=[{"label": name, "value": name} for name in course_names],
         value="All"
     ),
-    
-    html.Label("Sort Column:"),
-    dcc.Dropdown(
-        id="sort-column-dropdown",
-        options=[{"label": col, "value": col} for col in columns_to_sort],
-        value=columns_to_sort[0]
-    ),
-    
-    html.Label("Sort Order:"),
-    dcc.RadioItems(
-        id="sort-order-toggle",
-        options=[
-            {"label": "Ascending", "value": "Ascending"},
-            {"label": "Descending", "value": "Descending"}
-        ],
-        value="Descending",
-        inline=True
-    ),
-    
+
     dash_table.DataTable(
         id="data-table",
-        columns=[{"name": col, "id": col} for col in df.columns],
+        columns=[{"name": col, "id": col} for col in df.columns],  # Columns remain the same
+        data=df.head(20).to_pandas().to_dict("records"),
         page_size=20,
+        sort_action="custom",  # Enables manual sorting
+        sort_mode="single",  # Allows sorting by one column at a time
+        fixed_columns={"headers": True, "data": 0},  # Fix column sizes
         style_table={"overflowX": "auto"},
+        style_cell=column_style  # Apply fixed column width
     )
 ])
 
 @app.callback(
     Output("data-table", "data"),
     Input("class-dropdown", "value"),
-    Input("sort-column-dropdown", "value"),
-    Input("sort-order-toggle", "value")
+    Input("data-table", "sort_by")  # Handles sorting
 )
-def update_table(selected_class, sort_column, sort_order):
+def update_table(selected_class, sort_by):
     # Clone the DataFrame to avoid modifying the original
     filtered_df = df.clone()
     
     # Filter by selected class
     if selected_class != "All":
         filtered_df = filtered_df.filter(filtered_df["Course Name"] == selected_class)
-    
-    # Sort DataFrame
-    ascending = sort_order == "Ascending"
-    filtered_df = filtered_df.sort(by=[sort_column], descending=[not ascending])
-    
+
+    # Handle sorting when user clicks a column
+    if sort_by and len(sort_by) > 0:
+        sort_column = sort_by[0]["column_id"]
+        ascending = sort_by[0]["direction"] == "asc"
+        filtered_df = filtered_df.sort(by=[sort_column], descending=[not ascending])
+
     # Convert to Pandas for Dash table compatibility
     return filtered_df.head(20).to_pandas().to_dict("records")
 
